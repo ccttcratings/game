@@ -7,24 +7,39 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #1a1a2e; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
-    canvas { background: #16213e; border: 2px solid #0f3460; border-radius: 8px; }
+    canvas { background: #16213e; border: 2px solid #0f3460; border-radius: 8px; transform: rotate(90deg); }
   </style>
 </head>
 <body>
-  <canvas id="game" width="800" height="500"></canvas>
+  <canvas id="game" width="500" height="800"></canvas>
   <script>
     var canvas = document.getElementById('game');
     var ctx = canvas.getContext('2d');
     var W = canvas.width, H = canvas.height;
 
+    var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(freq, dur) {
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.value = freq;
+      gain.gain.value = 0.3;
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      osc.stop(audioCtx.currentTime + dur);
+    }
+
     var paddleW = 12, paddleH = 80;
     var player = { x: 20, y: H/2 - paddleH/2, score: 0 };
     var cpu = { x: W - 20 - paddleW, y: H/2 - paddleH/2, score: 0 };
-    var ball = { x: W/2, y: H/2, r: 8, vx: 5, vy: 3 };
+    var ball = { x: W/2, y: H/2, r: 8, vx: 4, vy: 3, speed: 5 };
+    var speedBoost = 0.15;
 
     function reset() {
       ball.x = W/2; ball.y = H/2;
-      ball.vx = (Math.random() > 0.5 ? 1 : -1) * 5;
+      ball.speed = 5;
+      ball.vx = (Math.random() > 0.5 ? 1 : -1) * ball.speed;
       ball.vy = (Math.random() - 0.5) * 6;
     }
 
@@ -64,19 +79,30 @@
       ball.x += ball.vx;
       ball.y += ball.vy;
 
-      if (ball.y - ball.r <= 0 || ball.y + ball.r >= H) ball.vy *= -1;
+      if (ball.y - ball.r <= 0 || ball.y + ball.r >= H) {
+        ball.vy *= -1;
+        playSound(300, 0.1);
+      }
 
       if (ball.x - ball.r <= player.x + paddleW && ball.y >= player.y && ball.y <= player.y + paddleH) {
-        ball.vx *= -1;
-        ball.vy += (ball.y - (player.y + paddleH/2)) * 0.1;
+        ball.vx = Math.abs(ball.vx);
+        ball.speed += speedBoost;
+        var angle = (ball.y - (player.y + paddleH/2)) / (paddleH/2);
+        ball.vx = ball.speed * Math.cos(angle * 0.6);
+        ball.vy = ball.speed * Math.sin(angle * 0.6);
+        playSound(440, 0.15);
       }
       if (ball.x + ball.r >= cpu.x && ball.y >= cpu.y && ball.y <= cpu.y + paddleH) {
-        ball.vx *= -1;
-        ball.vy += (ball.y - (cpu.y + paddleH/2)) * 0.1;
+        ball.vx = -Math.abs(ball.vx);
+        ball.speed += speedBoost;
+        var angle2 = (ball.y - (cpu.y + paddleH/2)) / (paddleH/2);
+        ball.vx = -ball.speed * Math.cos(angle2 * 0.6);
+        ball.vy = ball.speed * Math.sin(angle2 * 0.6);
+        playSound(440, 0.15);
       }
 
-      if (ball.x < 0) { cpu.score++; reset(); }
-      if (ball.x > W) { player.score++; reset(); }
+      if (ball.x < 0) { cpu.score++; playSound(200, 0.3); reset(); }
+      if (ball.x > W) { player.score++; playSound(600, 0.3); reset(); }
 
       var target = ball.y - paddleH/2;
       cpu.y += (target - cpu.y) * 0.06;
@@ -87,6 +113,10 @@
       var rect = canvas.getBoundingClientRect();
       player.y = (e.clientY - rect.top) / rect.height * H - paddleH/2;
       player.y = Math.max(0, Math.min(H - paddleH, player.y));
+    });
+
+    canvas.addEventListener('click', function() {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
     });
 
     function loop() {
